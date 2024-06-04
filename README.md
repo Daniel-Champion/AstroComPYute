@@ -5,12 +5,14 @@ Prerequisites:
 
 
   -- Nvidia GPU that supoorts the CUDA Toolkit 11.8 or 12+
+  
   -- Nvidia CUDA Toolkit
   
   -- NASA Deep Star Map .exr file 
       (obtain from https://svs.gsfc.nasa.gov/4851)
       AstroComPYute uses the Deep Star Map to perform 
       automatic gradient removal in stacked astro-images.
+      
   -- H-alpha full sky map .fits file from WHAM + VTSS + SHASSA all sky survey
       (https://faun.rc.fas.harvard.edu/dfink/skymaps/halpha/data/v1_1/index.html)
       AstroComPYute uses the Deep Star Map to proform automatic gradient removal 
