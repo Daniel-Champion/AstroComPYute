@@ -1,0 +1,10 @@
+astropy==5.1
+cupy-cuda11x==12.2.0
+matplotlib==3.7.2
+numpy==1.24.3
+opencv-python==4.8.1.78
+rawpy==0.18.1
+scipy==1.11.1
+PyQt5==5.15.7
+PyQt5-sip==12.11.0
+statsmodels==0.14.0
