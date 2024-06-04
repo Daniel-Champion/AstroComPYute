@@ -1,4 +1,4 @@
-# AstroComPYute
+# AstroComPYute v0.9
 AstroComPYute is a python based, CUDA accelerated, computational astrophotography toolkit capable of end-to-end workflows and near-real-time processing.
 
 Prerequisites:
