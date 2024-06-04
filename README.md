@@ -16,7 +16,7 @@ H-alpha full sky map .fits file from WHAM + VTSS + SHASSA all sky survey
 Starnet++ v2.0.0 command line tool version of Starnet++
   (obtain from: https://www.starnetastro.com/)
 
-Python: *cupy*, opencv-python, scikit-image, astropy, raypy, numpy, scipy, matplotlib
+Python: cupy, opencv-python, scikit-image, astropy, raypy, numpy, scipy, matplotlib
 
 ...and your favorite data acquisition software
 
