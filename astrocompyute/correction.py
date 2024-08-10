@@ -192,26 +192,53 @@ def SuperSimpleUnivariateBGEst_poly(UnivImage,
                          not_star_mask,
                          poly_regression_downsample = 0.001,
                          poly_order = 4,
+                         user_points = None,
+                         user_points_percentile = 5,
+                         user_points_radius = 20,
                          ): # subsample_bool = None
 
     t0 = time.time()
     #print('sampling image', time.time() - t0)
     ## Determine the X and Y coordinates of the image and sample from them randomly
     ImageRows, ImageCols = imagemath.GetImageCoords(AnalysisImage = UnivImage)
-
-    rrr = npr.random(UnivImage.shape)
-    
-    SampleBool = (rrr < poly_regression_downsample) & not_star_mask
-    
     nR = UnivImage.shape[0]
     
-    ## When we downsample, we scale the R and C coords by the row count so that 
-    ## our independant coordinates vary nominaly between 0 and just over 1.  This
-    ## will prevent overflow errors that I have observed when performing higher
-    ## order polynomial fits. 
-    R_coords_sample = ImageRows[SampleBool]/nR
-    C_coords_sample = ImageCols[SampleBool]/nR
-    Z_coords_sample = UnivImage[SampleBool]
+    if type(user_points) != type(None):
+        R_coords_sample = []
+        C_coords_sample = []
+        Z_coords_sample = []
+        
+        for isamp in range(len(user_points)):
+            rstart = max(0, user_points[isamp,1] - user_points_radius)
+            rend = min(UnivImage.shape[0]-1, user_points[isamp,1] + user_points_radius)
+            cstart = max(0, user_points[isamp,0] - user_points_radius)
+            cend = min(UnivImage.shape[1]-1, user_points[isamp,0] + user_points_radius)
+            
+            data_sample =  UnivImage[rstart:rend, cstart:cend][not_star_mask[rstart:rend, cstart:cend]]
+            if len(data_sample) > 0:
+                z_val = np.percentile(data_sample, user_points_percentile)
+            
+                R_coords_sample.append(user_points[isamp,1])
+                C_coords_sample.append(user_points[isamp,0])
+                Z_coords_sample.append(z_val)
+            
+        R_coords_sample = np.array(R_coords_sample)/nR
+        C_coords_sample = np.array(C_coords_sample)/nR
+        Z_coords_sample = np.array(Z_coords_sample)
+        
+    else:
+            
+        rrr = npr.random(UnivImage.shape)
+        
+        SampleBool = (rrr < poly_regression_downsample) & not_star_mask
+        
+        ## When we downsample, we scale the R and C coords by the row count so that 
+        ## our independant coordinates vary nominaly between 0 and just over 1.  This
+        ## will prevent overflow errors that I have observed when performing higher
+        ## order polynomial fits. 
+        R_coords_sample = ImageRows[SampleBool]/nR
+        C_coords_sample = ImageCols[SampleBool]/nR
+        Z_coords_sample = UnivImage[SampleBool]
     
     #print('Stage 1 poly fit', time.time() - t0)
     ## Stage 1 polynomial fit
@@ -384,7 +411,21 @@ def poly_features_cuda(x_vals, y_vals, poly_order, poly_coef = None):
         poly_eval = cp.asnumpy(poly_eval).ravel()
         return poly_eval
     
-    return cp.asnumpy(CoefMatrix)
+    CoefMatrix_cpu = cp.asnumpy(CoefMatrix)
+    
+    del CoefMatrix
+    del x_vals_gpu
+    del y_vals_gpu
+    del xFeat
+    del yFeat
+    del _poly_coef
+    del poly_eval
+    
+
+    cp._default_memory_pool.free_all_blocks()
+    
+    
+    return CoefMatrix_cpu
     
     
 def poly_features(x_vals, y_vals, poly_order, poly_coef = None):
@@ -457,8 +498,19 @@ def polyval2d_cuda(x_data, y_data, coef_mat):
     for row_x_i in range(coef_mat.shape[0]):
         for col_y_j in range(coef_mat.shape[1]):
             z_data += float(coef_mat[row_x_i, col_y_j]) * x_gpu**row_x_i * y_gpu**col_y_j
+    
             
-    return cp.asnumpy(z_data)
+    z_data_cpu = cp.asnumpy(z_data)
+    
+    del z_data
+    del x_gpu
+    del y_gpu
+    
+
+    cp._default_memory_pool.free_all_blocks()
+        
+        
+    return z_data_cpu
             
             
     
@@ -632,7 +684,19 @@ def CudaPoly4ParamEval(xCPU, yCPU, params):
     z += params[3]*x**2 + params[4]*y**2 + params[5]*x*y # 2nd order
     z += params[6]*x**3 + params[7] * y**3 + params[8] * x*y**2 + params[9] * y*x**2  # 3rd order
     z += params[10] * x**4 + params[11] * y**4 + params[12] * x*y**3 + params[13] * y*x**3 + params[14] * x**2*y**2 # 4th order
-    return cp.asnumpy(z)
+    
+    z_cpu = cp.asnumpy(z)
+    
+    del x
+    del y
+    del z
+    
+    
+
+    cp._default_memory_pool.free_all_blocks()
+    
+    
+    return z_cpu
     
 
 
