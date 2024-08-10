@@ -76,6 +76,49 @@ def ApplyColorTrans(conv_mat, RGB_Nx3):
    
     return np.dot(conv_mat, RGB_Nx3.T).T
 
+def ApplyColorTransP2(conv_mat, RGB_Nx3):
+    
+    ExtRGB = np.hstack([RGB_Nx3, RGB_Nx3**2])
+    
+   
+    return np.dot(conv_mat, ExtRGB.T).T
+
+def ApplyColorTransP2(conv_mat, RGB_Nx3):
+    
+    ExtRGB = np.hstack([RGB_Nx3, RGB_Nx3**2])
+    
+   
+    return np.dot(conv_mat, ExtRGB.T).T
+
+def ApplyColorTransP2b(conv_mat, RGB_Nx3):
+    
+    ExtRGB = np.hstack([RGB_Nx3, RGB_Nx3**2])
+    
+    ExtRGB = np.hstack([ExtRGB, 
+                        (ExtRGB[:,0]*ExtRGB[:,1]).reshape(-1,1), 
+                        (ExtRGB[:,0]*ExtRGB[:,2]).reshape(-1,1), 
+                        (ExtRGB[:,1]*ExtRGB[:,2]).reshape(-1,1)])
+   
+    return np.dot(conv_mat, ExtRGB.T).T
+
+def ApplyColorTransP2bLog(conv_mat, RGB_Nx3, LogExpo):
+    
+    _RGB_Nx3 = np.log(RGB_Nx3*2**LogExpo  + 1.0)
+    
+    ExtRGB = np.hstack([_RGB_Nx3, _RGB_Nx3**2])
+    
+    ExtRGB = np.hstack([ExtRGB, 
+                        (_RGB_Nx3[:,0]*_RGB_Nx3[:,1]).reshape(-1,1), 
+                        (_RGB_Nx3[:,0]*_RGB_Nx3[:,2]).reshape(-1,1), 
+                        (_RGB_Nx3[:,1]*_RGB_Nx3[:,2]).reshape(-1,1)])
+   
+    ExtRGB = np.dot(conv_mat, ExtRGB.T).T
+    
+    ExtRGB = (np.exp(ExtRGB) - 1.0)/2**LogExpo
+    
+    return ExtRGB
+
+
 
 
 def ColorConvolveImage(conv_mat, imageRGB):
@@ -94,7 +137,72 @@ def ColorConvolveImage(conv_mat, imageRGB):
     conv_image_RGB[conv_image_RGB < 0] = 0
    
     return conv_image_RGB
+
+
+
+def ColorConvolveImageP2(conv_mat, imageRGB):
    
+    frame_shape = imageRGB[:,:,0].shape
+    ID = deepcopy(np.vstack([imageRGB[:,:,0].ravel(), imageRGB[:,:,1].ravel(), imageRGB[:,:,2].ravel()])).T
+   
+   
+    cID = ApplyColorTransP2(conv_mat, ID)
+   
+    conv_image_RGB = np.stack([cID[:,0].reshape(frame_shape),
+                               cID[:,1].reshape(frame_shape),
+                               cID[:,2].reshape(frame_shape)], axis = 2)
+    
+    
+    conv_image_RGB[conv_image_RGB < 0] = 0
+   
+    return conv_image_RGB
+
+
+
+
+def ColorConvolveImageP2b(conv_mat, imageRGB):
+   
+    frame_shape = imageRGB[:,:,0].shape
+    ID = deepcopy(np.vstack([imageRGB[:,:,0].ravel(), imageRGB[:,:,1].ravel(), imageRGB[:,:,2].ravel()])).T
+   
+   
+    cID = ApplyColorTransP2b(conv_mat, ID)
+   
+    conv_image_RGB = np.stack([cID[:,0].reshape(frame_shape),
+                               cID[:,1].reshape(frame_shape),
+                               cID[:,2].reshape(frame_shape)], axis = 2)
+    
+    
+    conv_image_RGB[conv_image_RGB < 0] = 0
+   
+    return conv_image_RGB
+
+
+
+def ColorConvolveImageP2bLog(conv_mat, imageRGB, LogExpo):
+   
+    frame_shape = imageRGB[:,:,0].shape
+    ID = deepcopy(np.vstack([imageRGB[:,:,0].ravel(), imageRGB[:,:,1].ravel(), imageRGB[:,:,2].ravel()])).T
+   
+   
+    cID = ApplyColorTransP2bLog(conv_mat, ID, LogExpo)
+   
+    conv_image_RGB = np.stack([cID[:,0].reshape(frame_shape),
+                               cID[:,1].reshape(frame_shape),
+                               cID[:,2].reshape(frame_shape)], axis = 2)
+    
+    
+    conv_image_RGB[conv_image_RGB < 0] = 0
+   
+    return conv_image_RGB
+
+
+
+
+
+
+
+
     
 ### full spectrum color convolution matrix computed by finding the optimal linear
 ### trasnformation that maps ray camera RGB to a known answer color chart.
@@ -112,7 +220,50 @@ LEnhance_ASI2600MC_conv_mat = np.array([[ 1.        ,  1.23200262, -1.45530737],
 
 
 
+#### Use color.ColorConvolveImageP2b(conv_mat, uncorrected_RGB_image) with the P2NN (Poly Order 2, Non-negative regression estimate)
+full_spec_ASI2600MC_P2NN_conv_mat = np.array([[ 9.64336479e-01,  1.53346853e-02,  1.44538197e-03,
+                                              1.31707464e-02,  6.55354164e-01,  9.02197778e-01,
+                                             -7.46034622e-01,  8.03834471e-01, -1.53055400e+00],
+                                            [ 7.66792411e-04,  6.81724243e-01, -1.36482934e-05,
+                                              1.55721814e-01, -1.29540444e-02,  4.47321412e-02,
+                                             -1.93931616e-01, -2.47957757e-01,  4.23506680e-02],
+                                            [ 3.66189361e-03, -6.11550545e-06,  1.06324170e+00,
+                                              1.92176499e-01,  6.53093976e-01,  7.89443486e-01,
+                                             -7.67477133e-01,  8.90564792e-01, -1.63810426e+00]])
 
+
+#### Use color.ColorConvolveImageP2b(conv_mat, uncorrected_RGB_image) with the P2NN (Poly Order 2, Non-negative regression estimate)
+AntilaTriband_ASI2600MC_P2NN_conv_mat = np.array([[ 1.29845084e+00,  6.57399390e-02,  3.53801978e-04,
+                                                 -4.42162898e-01,  1.18419494e-01,  1.12223409e-01,
+                                                  2.07699563e-04,  4.63962937e-03, -2.59429292e-01],
+                                                [ 9.39286066e-04,  6.95951036e-01, -1.61157999e-04,
+                                                  1.11201722e-01,  5.66485915e+00,  3.07975902e+00,
+                                                  1.95111359e-01, -3.37159136e-01, -8.36986324e+00],
+                                                [ 3.86568209e-05,  4.08026509e-03,  8.56761610e-01,
+                                                  9.89309181e-02,  3.60121975e+00,  2.32950988e+00,
+                                                 -8.92723459e-01,  5.85524567e-01, -5.99075038e+00]])
+
+
+# scale_factor
+# Out[78]: 2.2207045951832627
+
+# scale_factor_LE
+# Out[86]: 3.4896752916117864
+
+
+"""
+
+
+CorrectRGB_Nx3 = np.dot(conv_mat, RGB_Nx3.T).T
+
+Find conv_mat such that 
+
+
+KnownRGB = np.dot(conv_mat, RGB_Nx3.T).T
+
+
+
+"""
 
 
 
