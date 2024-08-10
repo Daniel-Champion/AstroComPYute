@@ -128,7 +128,7 @@ def ImageQuantileTransform(InputImage, mode = 'unlinked'):
     
 
 
-def cuda_StarLocations(UnivariateImageWithStars, analysis_blur_sigma = 3, background_window = 11, minimum_prominance = 10.0/2**16):
+def cuda_StarLocations(UnivariateImageWithStars, analysis_blur_sigma = 3, local_max_window = 11, background_window = 11, minimum_prominance = 10.0/2**16):
     
     
     gpu_image = cp.asarray(UnivariateImageWithStars)
@@ -136,9 +136,9 @@ def cuda_StarLocations(UnivariateImageWithStars, analysis_blur_sigma = 3, backgr
     if analysis_blur_sigma > 0:
         gpu_image = cpxndimage.gaussian_filter(gpu_image, analysis_blur_sigma, order=0, output=None, mode='nearest', cval=0.0, truncate=3.0)
     
-    gpu_imageMax = cpxndimage.maximum_filter(gpu_image, size=background_window, footprint=None, output=None, mode='nearest', cval=0.0, origin=0)
+    gpu_imageMax = cpxndimage.maximum_filter(gpu_image, size=local_max_window, footprint=None, output=None, mode='nearest', cval=0.0, origin=0)
     gpu_imageMin = cpxndimage.minimum_filter(gpu_image, size=background_window, footprint=None, output=None, mode='nearest', cval=0.0, origin=0)
-    gpu_imageSum = cpxndimage.uniform_filter(gpu_image, size=background_window, output=None, mode='nearest', cval=0.0, origin=0)
+    gpu_imageSum = cpxndimage.uniform_filter(gpu_image, size=local_max_window, output=None, mode='nearest', cval=0.0, origin=0)
     
     RowIndices, ColIndices = (gpu_imageMax == gpu_image).nonzero()
     
@@ -153,14 +153,31 @@ def cuda_StarLocations(UnivariateImageWithStars, analysis_blur_sigma = 3, backgr
     flux_proportion = ((gpu_imageSum[RowIndices, ColIndices] - star_floors)*(background_window**2)) / ( (star_peak_mags - star_floors) * (background_window**2))
     
     
-    RowIndices = cp.asnumpy(RowIndices[bbb])
-    ColIndices = cp.asnumpy(ColIndices[bbb])
-    star_peak_mags = cp.asnumpy(star_peak_mags[bbb])
-    star_prominances = cp.asnumpy(star_prominances[bbb])
-    star_floors = cp.asnumpy(star_floors[bbb])
-    flux_proportion = cp.asnumpy(flux_proportion[bbb])
+    RowIndices_cpu = cp.asnumpy(RowIndices[bbb])
+    ColIndices_cpu = cp.asnumpy(ColIndices[bbb])
+    star_peak_mags_cpu = cp.asnumpy(star_peak_mags[bbb])
+    star_prominances_cpu = cp.asnumpy(star_prominances[bbb])
+    star_floors_cpu = cp.asnumpy(star_floors[bbb])
+    flux_proportion_cpu = cp.asnumpy(flux_proportion[bbb])
     
-    return RowIndices, ColIndices, star_peak_mags, star_prominances, star_floors, flux_proportion
+    
+    del gpu_imageMax
+    del gpu_imageMin
+    del gpu_imageSum
+    del RowIndices
+    del ColIndices 
+    del flux_proportion
+    del star_floors
+    del star_prominances
+    del star_peak_mags
+    del bbb
+    del gpu_image
+
+    cp._default_memory_pool.free_all_blocks()
+    
+    
+    
+    return RowIndices_cpu, ColIndices_cpu, star_peak_mags_cpu, star_prominances_cpu, star_floors_cpu, flux_proportion_cpu
 
 
 
@@ -180,8 +197,14 @@ def CudaStarMask(star_loc_rows, star_loc_cols, footprint_size, image_shape_tuple
     star_footprint = np.array(skimage.morphology.disk(footprint_size), dtype = bool)
     
     ref_synthStar_gpu = cpx.scipy.ndimage.maximum_filter(ref_synthStar_gpu, footprint=star_footprint, output=None, mode='nearest', cval=0.0, origin=0)
+    
+    ref_synthStar = cp.asnumpy(ref_synthStar_gpu) > 0
+    
+    del ref_synthStar_gpu
 
-    return cp.asnumpy(ref_synthStar_gpu) > 0
+    cp._default_memory_pool.free_all_blocks()
+
+    return ref_synthStar
 
 
 
