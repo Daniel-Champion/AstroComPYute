@@ -15,7 +15,7 @@ import matplotlib.colors as pltcolors
 
 from PyQt5 import QtWidgets
 from PyQt5.QtWidgets import  QFileDialog
-from matplotlib.widgets import RadioButtons, TextBox, Button, RectangleSelector
+from matplotlib.widgets import RadioButtons, TextBox, Button, RectangleSelector, PolygonSelector
 
 import time
 
@@ -285,6 +285,69 @@ def QuickInspectRGB(raw_RGB_frame, perc_black=5, perc_white = 95, Title = ''):
     
     
 
+#%%
+
+
+
+
+
+
+def CollectPointsImage(InputImage, 
+                       min_color_val = None,
+                       max_color_val = None,
+                       message = '',
+                       colormap = plt.cm.viridis,
+                       linewidth = 0):
+
+    if len(InputImage.shape) == 3:
+        mode = 'RGB'
+    else:
+        mode = 'Gray'
+    
+    
+    fig, ax = plt.subplots(figsize=(16,9))
+    ax.set_title('Select points with the mouse... ' + message)
+    
+
+    if type(min_color_val) == type(None):
+        VMIN = InputImage.min()
+    else:
+        VMIN = min_color_val
+    if type(max_color_val) == type(None):
+        VMAX = InputImage.max()
+    else:
+        VMAX = max_color_val
+    
+    if mode == 'Gray':
+        pos = ax.imshow(InputImage, interpolation='nearest', cmap = colormap, vmin = VMIN, vmax =VMAX)
+        
+    else:
+        plt.imshow(InputImage)
+        
+    fig.show()
+    
+    selector = PolygonSelector(ax, 
+                               lambda *args: None,
+                               useblit = True,
+                               props = dict(color='magenta', linestyle='-', linewidth=linewidth, alpha=0.5, markersize = 50)) #
+    # useblit = True
+    
+    print('made it here')
+    #selector.disconnect_events()
+    print('made it here too')
+    
+    
+    return selector, selector.verts
+    
+
+
+
+
+
+
+
+
+
 
 
     
@@ -386,9 +449,17 @@ def PlotHistInt(imageInt, domain = 'int'):
 def PlotHistRGB(imageRGB, domain = 'int', return_counts = False, skipplot = False, mask = None):
     
     if type(mask) == type(None):
-        counts_R = np.bincount(np.array(np.round(imageRGB[:,:,0].ravel()*2**16), dtype = int))
-        counts_G = np.bincount(np.array(np.round(imageRGB[:,:,1].ravel()*2**16), dtype = int))
-        counts_B = np.bincount(np.array(np.round(imageRGB[:,:,2].ravel()*2**16), dtype = int))
+        
+        nnIntRGB = np.array(np.round(imageRGB*2**16), dtype = int)
+        nnIntRGB[nnIntRGB < 0] = 0
+        
+        counts_R = np.bincount(nnIntRGB[:,:,0].ravel())
+        counts_G = np.bincount(nnIntRGB[:,:,1].ravel())
+        counts_B = np.bincount(nnIntRGB[:,:,2].ravel())
+        
+        # counts_R = np.bincount(np.array(np.round(imageRGB[:,:,0].ravel()*2**16), dtype = int))
+        # counts_G = np.bincount(np.array(np.round(imageRGB[:,:,1].ravel()*2**16), dtype = int))
+        # counts_B = np.bincount(np.array(np.round(imageRGB[:,:,2].ravel()*2**16), dtype = int))
     else:
         counts_R = np.bincount(np.array(np.round(imageRGB[:,:,0][mask]*2**16), dtype = int))
         counts_G = np.bincount(np.array(np.round(imageRGB[:,:,1][mask]*2**16), dtype = int))
@@ -450,7 +521,9 @@ def MultiScatterPlot3D(ListX, ListY, ListZ,
         
     if darkness:
         plt.style.use('dark_background')
-        
+    
+    
+    print('debug:', Colors, Colors[0])
     fig = plt.figure(figsize=(9, 9), dpi=70)
     ax = fig.add_subplot(111, projection = '3d')
 
