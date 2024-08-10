@@ -22,7 +22,7 @@ import cupyx as cpx
 from cupyx.scipy import ndimage as cpxndimage
 
 
-
+from astrocompyute.visualization import ShowImage, MultiScatterPlot
 
 
 
@@ -55,7 +55,14 @@ def cuda_polynomial_transform(departure_image , skimage_polynomial_transform_par
         
     out_footprint = cp.asnumpy(cpxndimage.map_coordinates(cp.ones((departure_image.shape[0],departure_image.shape[1]), dtype = cp.float32),  CoordMatrix, mode='constant', cval = 0.0))
 
-    return cp.asnumpy(out_img), out_footprint #cp.asnumpy(out_footprint)
+    del xx
+    del yy
+    del TransformedCols
+    del TransformedRows
+    del CoordMatrix
+
+    cp._default_memory_pool.free_all_blocks()
+    return out_img, out_footprint #cp.asnumpy(out_footprint)
 
 
 
@@ -74,7 +81,9 @@ def CudaPolynomialRegistration2(reference_image,
                                corr_thresh = .8,
                                patch_sample_points = 200,
                                patch_buffer = 200,
-                               sub_image_radius = 500):
+                               sub_image_radius = 500,
+                               message = '',
+                               min_sigmage = 10):
     
     """
     
@@ -91,10 +100,10 @@ def CudaPolynomialRegistration2(reference_image,
     est_ref_bits = num_ref_stars * np.pi * footprint_size**2
     ref_bg_bits = NC*NR - est_ref_bits
     
-    bg_val = 0.1 * (- est_ref_bits / ref_bg_bits)
+    bg_val = 0.0 #0.1 * (- est_ref_bits / ref_bg_bits)
     
-    min_sigmage = sp.stats.norm.ppf(1.0 - 1.0/(1000*1000*(2*sub_image_radius)**2))
-    
+    #min_sigmage = sp.stats.norm.ppf(1.0 - 1.0/(1000*1000*(2*sub_image_radius)**2))
+    print('hhh', min_sigmage)
     ## Gather image and star specifics
     image_shape = unaligned_image.shape
 
@@ -105,8 +114,24 @@ def CudaPolynomialRegistration2(reference_image,
     ref_synthStar_gpu = np.zeros( (reference_image.shape[0], reference_image.shape[1]), dtype = np.float32) + bg_val
     test_synthStar_gpu = np.zeros( (unaligned_image.shape[0], unaligned_image.shape[1]), dtype = np.float32) + bg_val
     
-    ref_synthStar_gpu[ref_star_loc_rows, ref_star_loc_cols] = 1.0 #np.log2(2**5 * (ref_star_prominances - ref_min_prom) + 1)/5
-    test_synthStar_gpu[test_star_loc_rows, test_star_loc_cols] = 1.0 #np.log2(2**5 * (test_star_prominances - test_min_prom) + 1)/5
+    # ref_synthStar_gpu[ref_star_loc_rows, ref_star_loc_cols] = 1.0 #np.log2(2**5 * (ref_star_prominances - ref_min_prom) + 1)/5
+    # test_synthStar_gpu[test_star_loc_rows, test_star_loc_cols] = 1.0 #np.log2(2**5 * (test_star_prominances - test_min_prom) + 1)/5
+    
+    
+    mapped_ref_prom = ref_star_prominances - ref_min_prom
+    mapped_ref_prom[mapped_ref_prom < 0] = 0.0
+    mapped_ref_prom /= (2.0* ref_min_prom)
+    mapped_ref_prom[mapped_ref_prom >1] = 1.0
+
+    mapped_test_prom = test_star_prominances - test_min_prom
+    mapped_test_prom[mapped_test_prom < 0] = 0.0
+    mapped_test_prom /= (2.0* test_min_prom)
+    mapped_test_prom[mapped_test_prom >1] = 1.0    
+    
+    ref_synthStar_gpu[ref_star_loc_rows, ref_star_loc_cols] = mapped_ref_prom #np.log2(2**5 * (ref_star_prominances - ref_min_prom) + 1)/5
+    test_synthStar_gpu[test_star_loc_rows, test_star_loc_cols] = mapped_test_prom #np.log2(2**5 * (test_star_prominances - test_min_prom) + 1)/5
+       
+    
     
     ## pass the synhthetic star images to the device
     ref_synthStar_gpu = cp.asarray(ref_synthStar_gpu)
@@ -114,14 +139,36 @@ def CudaPolynomialRegistration2(reference_image,
     
     spatial_mask = cp.asarray(np.zeros( (reference_image.shape[0], reference_image.shape[1]), dtype = np.float32 ) )
     
+
     ## Apply a maximum filter to the synthetic star images to spread out the star footprints
     star_footprint = np.array(skimage.morphology.disk(footprint_size), dtype = bool)
     
     ref_synthStar_gpu = cpxndimage.maximum_filter(ref_synthStar_gpu, footprint=star_footprint, output=None, mode='nearest', cval=0.0, origin=0)
     test_synthStar_gpu = cpxndimage.maximum_filter(test_synthStar_gpu, footprint=star_footprint, output=None, mode='nearest', cval=0.0, origin=0)
 
-    #PlotImage(cp.asnumpy(ref_synthStar_gpu))
-    #PlotImage(cp.asnumpy(test_synthStar_gpu))
+
+
+
+    patch_pix = (2*spatial_patch_radius + 1)**2
+    image_pix = reference_image.shape[0] * reference_image.shape[1]
+    
+    avg_patch_corr = float(cp.sum((ref_synthStar_gpu)**2))
+    
+    avg_patch_corr = (avg_patch_corr/image_pix) * patch_pix
+    print('AVG corr:', avg_patch_corr)
+    
+    
+    
+    
+    
+    #ShowImage(cp.asnumpy(ref_synthStar_gpu))
+    
+    # this one shows the prepared synth image of the test/target
+    
+    
+    #ShowImage(cp.asnumpy(test_synthStar_gpu), Title = message)
+    
+    
     ## Create the containers that will hold the correlation point correspondences
     pts_xy_ref = []
     pts_xy_test = []
@@ -136,11 +183,22 @@ def CudaPolynomialRegistration2(reference_image,
     col_range_gpu = cp.arange(NC, dtype = int)
     
     all_correlations = np.zeros((patch_sample_points, 2))
+    
+    edge_prop = 0.15
     for iSamp in range(patch_sample_points):
 
         ## Generate the test point coordinates
         patch_loc_row = npr.randint(rc_buff, NR-rc_buff-1 )
         patch_loc_col = npr.randint(rc_buff, NC-rc_buff-1 )
+        
+        if iSamp %3 == 0:
+            row_interior_test = ( (patch_loc_row > edge_prop*NR) and (patch_loc_row < (1.0-edge_prop)*NR))
+            col_interior_test = ( (patch_loc_col > edge_prop*NC) and (patch_loc_col < (1.0-edge_prop)*NC))
+            while row_interior_test and col_interior_test:
+                patch_loc_row = npr.randint(rc_buff, NR-rc_buff-1 )
+                patch_loc_col = npr.randint(rc_buff, NC-rc_buff-1 )
+                row_interior_test = ( (patch_loc_row > edge_prop*NR) and (patch_loc_row < (1.0-edge_prop)*NR))
+                col_interior_test = ( (patch_loc_col > edge_prop*NC) and (patch_loc_col < (1.0-edge_prop)*NC))
         
         ## compute the sub image ranges to reduce the size of the cross correlation computation
         ref_row_start = max(0, patch_loc_row - sub_image_radius)
@@ -171,7 +229,9 @@ def CudaPolynomialRegistration2(reference_image,
         
         
         ## compute the maximum correlation
-        priori_correlation =   float(cp.sum(tp**2) )   
+        priori_correlation =   float(cp.sum(tp**2) ) 
+        
+        #print('hhg', priori_correlation, tp.shape)
         
         ## Fourier transform of the test subimage
         # # # tp2 = cp.fft.fft2(spatial_mask[ref_row_start:ref_row_end, ref_col_start:ref_col_end]).conj()
@@ -182,6 +242,7 @@ def CudaPolynomialRegistration2(reference_image,
         
         cc_image = cp.fft.fftshift(cp.fft.ifft2( cp.fft.fft2(ref_synthStar_gpu[ref_row_start:ref_row_end, ref_col_start:ref_col_end]) * cp.fft.fft2(spatial_mask[ref_row_start:ref_row_end, ref_col_start:ref_col_end]).conj() )).real
         
+        cc_image[int(round(0.5 * NSR)), int(round(0.5 * NSC))] = -1.
 
         ## repair the spatial_mask gpu array for use in the next iteration of the loop
         spatial_mask[patch_loc_row-spatial_patch_radius:patch_loc_row+spatial_patch_radius+1, 
@@ -215,11 +276,11 @@ def CudaPolynomialRegistration2(reference_image,
         
         all_correlations[iSamp, 0] =  corr_prop
         all_correlations[iSamp, 1] =  cc_sigmage
-        
+
         #######################
         #### Determine the sigmage of the maximum correlation   
   
-        if (corr_prop > corr_thresh) and (corr_prop < 1.1) and (cc_sigmage > min_sigmage): #/ True: #cc_sigmage > sigmage_thresh:
+        if (priori_correlation > 0.33*avg_patch_corr) and (corr_prop > corr_thresh) and (corr_prop < 1.1) and (cc_sigmage > min_sigmage): #/ True: #cc_sigmage > sigmage_thresh:
             pts_xy_ref.append([patch_loc_col-subtractive_col_shift_test2ref, patch_loc_row-subtractive_row_shift_test2ref])
             pts_xy_test.append([patch_loc_col, patch_loc_row])
             #print('Acceptable correlation:', iSamp, 'dy=', subtractive_row_shift_test2ref, 'dx=', subtractive_col_shift_test2ref, 'corr %:', 100*corr_prop, 'sigmage=', cc_sigmage)
@@ -227,14 +288,14 @@ def CudaPolynomialRegistration2(reference_image,
         else:
             #print('Possible low quality correlation:', iSamp, 'dy=', subtractive_row_shift_test2ref, 'dx=', subtractive_col_shift_test2ref, 'corr %:', 100*corr_prop, 'sigmage=', cc_sigmage)
             pass
-            
+    #print(all_correlations)
     corr_prop_deciles = np.percentile(all_correlations[:,0], np.linspace(0, 100, num = 11))
     corr_sigmage_deciles = np.percentile(all_correlations[:,1], np.linspace(0, 100, num = 11))
     
     #print('Correlation deciles:', '(surviving:', np.sum(all_correlations[:,0] > corr_thresh),')')
     print('\tCorrelation summary:', '(surviving:', np.sum(all_correlations[:,0] > corr_thresh),'out of', len(all_correlations),')')
-    # for ii in range(len(corr_prop_deciles)):
-    #     print('\t', ii*10, '%:', 'prop=', round(corr_prop_deciles[ii], 3), 'sigmage=', round(corr_sigmage_deciles[ii], 3))
+    for ii in range(len(corr_prop_deciles)):
+        print('\t', ii*10, '%:', 'prop=', round(corr_prop_deciles[ii], 3), 'sigmage=', round(corr_sigmage_deciles[ii], 3))
         
     pts_xy_ref = np.array(pts_xy_ref)
     pts_xy_test = np.array(pts_xy_test)
@@ -275,6 +336,28 @@ def CudaPolynomialRegistration2(reference_image,
     print('\tTotal registration time (CUDA):', T3-T1)
     
     #del(cc_image, tp2, rp, test_synthStar_gpu, ref_synthStar_gpu)
+    if False:
+        MultiScatterPlot([pts_xy_ref[~outliers,0], pts_xy_test[~outliers,0]], 
+                            [pts_xy_ref[~outliers,1], pts_xy_test[~outliers,1]], 
+                            Colors = ['k', 'r'], 
+                            Sizes = [20,5], 
+                            Labels = ['ref', 'test'], 
+                            Lines = False, 
+                            alpha = 0.8, 
+                            LineWidth = 3, 
+                            Title = message, 
+                            XLabel = 'Columns', 
+                            YLabel = 'Rows')
+        
+    
+    del ref_synthStar_gpu
+    del test_synthStar_gpu
+    del spatial_mask
+    del cc_image
+    
+    cp._default_memory_pool.free_all_blocks()
+    
+    
     return aligned_image, aligned_image_footprint, tform.params, pts_xy_ref, pts_xy_test#, cp.mean(cc_sigmas)
 
 
