@@ -184,7 +184,7 @@ def PlateSolve(sample_image_path,
         
         
     ASTAP_command = astap_executable + ' -f ' +  _sample_image_path + ' -r '+ str(int(search)) + ' -fov ' + str(fov) + ra_guess + dec_guess
-    
+    print('ASTAP:\n', ASTAP_command)
     os.system(ASTAP_command)
     
     
@@ -250,9 +250,12 @@ def PlateSolve(sample_image_path,
 def PlateSolveMask(image_fp, 
                    astap_executable = '"C:/Program Files/astap/astap.exe"' ,
                    dilate_n = 200,
+                   fov = 0,
+                   angle = 140,
                    return_annotation_bool = False,
                    min_BG_pix_proportion = 0.5,
                    kill_the_file = True,
+                   tolerance = 0.007,
                    max_attempts = 10):
     """Perform a plate solve of an image and return an annotated version and a 
     boolean sampling mask that avoids annotated deep sky objects.
@@ -286,10 +289,14 @@ def PlateSolveMask(image_fp,
             sampling boolean array that avoids annotated DSOs
         annotation : boolean ndarray, if return_annotation_bool = True
             the boolean annotation array (same shape as the image)
+            
+    Example:
+    -------
+         cmd: "C:/Program Files/astap/astap.exe" -annotate -f F:/Astronomy/Data/MarkariansChain\2024-06-06_22-00-07_MarksriansChain_Set_Tmp=-5.50_Tim=10.00s_N=0000_G=100_Off=70_HFR=2.38_S=1079_tele=TMB130mm.tif -r 170 -fov 8.85
 
     """    
-    Annotate_command = astap_executable + ' -annotate -f ' + image_fp + ' -r 140 -fov 0 -check apply'
-    
+    Annotate_command = astap_executable + ' -annotate -f ' + image_fp + ' -r ' + str(angle) + ' -fov ' + str(fov) + ' -t ' + str(tolerance) #+ ' -check apply'
+    print('...ASTAP: running cammand = ', Annotate_command)
     os.system(Annotate_command)
     
     image_ext = image_fp.split('.')[-1]
@@ -570,7 +577,25 @@ def Pixels2RADEC_Transform3D_cuda(pixel_rows, pixel_cols, platesolve_solution, d
     coords3D_ra *= 180./cp.pi
     coords3D_ra += (coords3D_ra < 0)*360.
     
-    return  cp.asnumpy(coords3D_ra), cp.asnumpy(coords3D_dec) # RA and DEC on the tangent plane
+    coords3D_ra_cpu = cp.asnumpy(coords3D_ra)
+    coords3D_dec_cpu = cp.asnumpy(coords3D_dec)
+    
+    del coords3D_ra
+    del coords3D_dec
+    del basis_row_gpu
+    del basis_col_gpu
+    del pixel_rows_gpu
+    del pixel_cols_gpu
+    del relative_row_coords
+    del relative_col_coords
+    del coords3D
+    del coords3D_rho
+
+    cp._default_memory_pool.free_all_blocks()
+    
+    
+    
+    return coords3D_ra_cpu, coords3D_dec_cpu # RA and DEC on the tangent plane
 
 
 
@@ -685,6 +710,8 @@ def GenStarmapFast(path_to_EXR_GaiaDR2_NASA_starmap = 'C:/Users/champ/Astronomy/
             the NASA deep star map at the provided coordinates. 
 
     """    
+    
+    os.environ["OPENCV_IO_ENABLE_OPENEXR"]="1"
     
     starmap_grey_fp, starmap_RGB_fp = InitializeStarmap(path_to_EXR_GaiaDR2_NASA_starmap)
     
