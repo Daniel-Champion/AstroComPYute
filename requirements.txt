@@ -8,3 +8,4 @@ scipy==1.11.1
 PyQt5==5.15.7
 PyQt5-sip==12.11.0
 statsmodels==0.14.0
+scikit-image==0.24.0
