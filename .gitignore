@@ -1,0 +1,16 @@
+# temp files
+__pycache__/
+*.swp
+*.py[cod]
+.cache
+
+# packaging related
+dist/
+build/
+eggs/
+.eggs/
+
+# test related
+.coverage
+.hypothesis/
+.tox/
